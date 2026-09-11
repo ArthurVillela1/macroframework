@@ -41,7 +41,12 @@ for series_id, (fred_code, frequency, name) in SERIES_MAP.items():
     yoy = data.pct_change(periods=12) * 100
     print(yoy.tail(10))
 
-def upsert_observation(conn, series_id, obs_date, value, vintage_date):
+def upsert_observation(conn, series_id, obs_date, value, vintage_date): # conn = database connection
+    # calling .execute() on the connection to run a SQL command
+    # text(...) (from SQLAlchemy) marks the string as raw SQL to be run as-is
+    # The MERGE statement is used to either update an existing row or insert a new row into the observations table
+    # USING clause specifies the source data to be merged into the target table
+    # Checking if a row with the same series_id and obs_date already exists in the observations table
     conn.execute(text("""
         MERGE observations AS target
         USING (SELECT :sid AS series_id, :d AS obs_date) AS src
