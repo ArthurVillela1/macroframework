@@ -46,7 +46,9 @@ def upsert_observation(conn, series_id, obs_date, value, vintage_date): # conn =
     # text(...) (from SQLAlchemy) marks the string as raw SQL to be run as-is
     # The MERGE statement is used to either update an existing row or insert a new row into the observations table
     # USING clause specifies the source data to be merged into the target table
-    # Checking if a row with the same series_id and obs_date already exists in the observations table
+    # ON to Check if a row with the same series_id and obs_date already exists in the observations table
+    # WHEN MATCHED THEN clause specifies what to do if a matching row is found (update the value and vintage_date)
+    # WHEN NOT MATCHED THEN clause specifies what to do if no matching row is found (insert a new row with the provided values)
     conn.execute(text("""
         MERGE observations AS target
         USING (SELECT :sid AS series_id, :d AS obs_date) AS src
@@ -60,7 +62,7 @@ def upsert_observation(conn, series_id, obs_date, value, vintage_date): # conn =
 
 def main():
     today = date.today()
-    with engine.begin() as conn:
+    with engine.begin() as conn: # Opens a connection to the datbase
         for series_id, (fred_code, frequency, name) in SERIES_MAP.items():
             print(f"\n--- {series_id} ({name}) ---")
             data = fred.get_series(fred_code)
