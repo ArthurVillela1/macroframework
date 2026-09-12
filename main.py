@@ -19,11 +19,7 @@ engine = create_engine(CONN_STR) # Used to open the connection to the SQL Server
 fred = Fred(api_key=FRED_API_KEY) 
 
 
-# Listing FRED series to fetch and their corresponding metadata
-# Each entry: (fred_code, frequency, name, transform)
-#   transform = "yoy_pct" -> print as year-over-year % change (for index/count-type series, e.g. CPI, payrolls)
-#   transform = "diff"    -> print as year-over-year change in percentage points (for series already expressed as %, e.g. yields, spreads)
-#   transform = "level"   -> print the raw value, no transform (for rates that are already a %, e.g. unemployment rate)
+# FRED series to fetch and their corresponding metadata
 SERIES_MAP = {
 
     # CPI
@@ -42,9 +38,9 @@ SERIES_MAP = {
     "INFL_EXP_MICH":         ("MICH",       "monthly",   "Michigan Inflation Expectations (%)",        "level"),
 
     # Labor market
-    "PAYROLLS":              ("PAYEMS",     "monthly",   "Nonfarm Payrolls (Thousands)",               "yoy_pct"),
-    "CLAIMS_INITIAL":        ("ICSA",       "weekly",    "Initial Jobless Claims",                     "yoy_pct"),
-    "CLAIMS_CONTINUED":      ("CCSA",       "weekly",    "Continued Jobless Claims",                   "yoy_pct"),
+    "PAYROLLS":              ("PAYEMS",     "monthly",   "Nonfarm Payrolls (Thousands)",               "change"),
+    "CLAIMS_INITIAL":        ("ICSA",       "weekly",    "Initial Jobless Claims",                     "level"),
+    "CLAIMS_CONTINUED":      ("CCSA",       "weekly",    "Continued Jobless Claims",                   "level"),
     "AVG_HOURLY_EARNINGS":   ("AHETPI",     "monthly",   "Average Hourly Earnings ($)",                "yoy_pct"),
     "UNRATE":                ("UNRATE",     "monthly",   "Unemployment Rate (%)",                      "level"),
     "UNEMPLOY_LEVEL":        ("UNEMPLOY",   "monthly",   "Unemployment Level (Thousands)",             "yoy_pct"),
@@ -69,6 +65,11 @@ SERIES_MAP = {
 
     # Yield curve spread
     "SPREAD_10Y2Y":          ("T10Y2Y",     "daily",     "10Y-2Y Treasury Spread (pp)",                "level"),
+
+    # Treasury term premiums
+    "TERM_PREMIUM_2Y":       ("THREEFYTP2",  "daily",    "2-Year Treasury Term Premium (%)",           "level"),
+    "TERM_PREMIUM_5Y":       ("THREEFYTP5",  "daily",    "5-Year Treasury Term Premium (%)",           "level"),
+    "TERM_PREMIUM_10Y":      ("THREEFYTP10", "daily",    "10-Year Treasury Term Premium (%)",          "level"),
 }
 
 # Note: "Vacancy-to-unemployment ratio" has no direct FRED ticker.
@@ -87,12 +88,21 @@ for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
         # for index/count-type series: show year-over-year % change
         result = data.pct_change(periods=periods) * 100
         label = "YoY % change"
+
+    elif transform == "change":
+        # show the change from the previous observation
+        # for monthly payrolls, this is the monthly change in thousands
+        result = data.diff()
+        label = "change from previous observation"
+
     elif transform == "diff":
-        # for series already expressed as a %, e.g. yields/spreads: show year-over-year change in percentage points, not a % change of a %
+        # for series already expressed as a %, e.g. yields/spreads:
+        # show year-over-year change in percentage points, not a % change of a %
         result = data.diff(periods=periods)
         label = "YoY change (pp)"
+
     else:  # "level"
-        # for rates already expressed as a %, e.g. unemployment rate: show the raw value, no transform
+        # show the raw value with no transformation
         result = data
         label = "level"
 
