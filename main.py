@@ -45,6 +45,16 @@ SERIES_MAP = {
 
     # Money supply
     "M2_MONEY_SUPPLY":       ("M2SL",      "monthly", "M2 Money Supply ($ Billions)"),
+
+    # Treasury yields
+    "YIELD_2Y":              ("DGS2",      "daily",   "2-Year Treasury Yield (%)"),
+    "YIELD_5Y":              ("DGS5",      "daily",   "5-Year Treasury Yield (%)"),
+    "YIELD_10Y":             ("DGS10",     "daily",   "10-Year Treasury Yield (%)"),
+    "YIELD_20Y":             ("DGS20",     "daily",   "20-Year Treasury Yield (%)"),
+    "YIELD_30Y":             ("DGS30",     "daily",   "30-Year Treasury Yield (%)"),
+
+    # Yield curve spread
+    "SPREAD_10Y2Y":          ("T10Y2Y",    "daily",   "10Y-2Y Treasury Spread (pp)"),
 }
 
 # Number of observations that make up one year, per frequency
