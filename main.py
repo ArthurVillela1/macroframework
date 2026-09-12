@@ -20,54 +20,84 @@ fred = Fred(api_key=FRED_API_KEY)
 
 
 # Listing FRED series to fetch and their corresponding metadata
+# Each entry: (fred_code, frequency, name, transform)
+#   transform = "yoy_pct" -> print as year-over-year % change (for index/count-type series, e.g. CPI, payrolls)
+#   transform = "diff"    -> print as year-over-year change in percentage points (for series already expressed as %, e.g. yields, spreads)
+#   transform = "level"   -> print the raw value, no transform (for rates that are already a %, e.g. unemployment rate)
 SERIES_MAP = {
 
     # CPI
-    "CPI_HEADLINE":          ("CPIAUCSL",  "monthly", "CPI Headline (Index)"),
-    "CPI_CORE":              ("CPILFESL",  "monthly", "CPI Core (Index)"),
+    "CPI_HEADLINE":          ("CPIAUCSL",   "monthly",   "CPI Headline (Index)",                      "yoy_pct"),
+    "CPI_CORE":              ("CPILFESL",   "monthly",   "CPI Core (Index)",                           "yoy_pct"),
 
     # PCE
-    "PCE_HEADLINE":          ("PCEPI",     "monthly", "PCE Headline (Index)"),
-    "PCE_CORE":              ("PCEPILFE",  "monthly", "PCE Core (Index)"),
+    "PCE_HEADLINE":          ("PCEPI",      "monthly",   "PCE Headline (Index)",                       "yoy_pct"),
+    "PCE_CORE":              ("PCEPILFE",   "monthly",   "PCE Core (Index)",                           "yoy_pct"),
 
     # PPI
-    "PPI_HEADLINE":          ("PPIFIS",    "monthly", "PPI Final Demand (Index)"),
-    "PPI_CORE":              ("PPIFES",    "monthly", "PPI Final Demand Less Food & Energy (Index)"),
+    "PPI_HEADLINE":          ("PPIFIS",     "monthly",   "PPI Final Demand (Index)",                   "yoy_pct"),
+    "PPI_CORE":              ("PPIFES",     "monthly",   "PPI Final Demand Less Food & Energy (Index)", "yoy_pct"),
 
     # Inflation expectations
-    "INFL_EXP_MICH":         ("MICH",      "monthly", "Michigan Inflation Expectations (%)"),
+    "INFL_EXP_MICH":         ("MICH",       "monthly",   "Michigan Inflation Expectations (%)",        "level"),
 
     # Labor market
-    "PAYROLLS":              ("PAYEMS",    "monthly", "Nonfarm Payrolls (Thousands)"),
-    "CLAIMS_INITIAL":        ("ICSA",      "weekly",  "Initial Jobless Claims"),
-    "CLAIMS_CONTINUED":      ("CCSA",      "weekly",  "Continued Jobless Claims"),
-    "AVG_HOURLY_EARNINGS":   ("AHETPI",    "monthly", "Average Hourly Earnings ($)"),
+    "PAYROLLS":              ("PAYEMS",     "monthly",   "Nonfarm Payrolls (Thousands)",               "yoy_pct"),
+    "CLAIMS_INITIAL":        ("ICSA",       "weekly",    "Initial Jobless Claims",                     "yoy_pct"),
+    "CLAIMS_CONTINUED":      ("CCSA",       "weekly",    "Continued Jobless Claims",                   "yoy_pct"),
+    "AVG_HOURLY_EARNINGS":   ("AHETPI",     "monthly",   "Average Hourly Earnings ($)",                "yoy_pct"),
+    "UNRATE":                ("UNRATE",     "monthly",   "Unemployment Rate (%)",                      "level"),
+    "UNEMPLOY_LEVEL":        ("UNEMPLOY",   "monthly",   "Unemployment Level (Thousands)",             "yoy_pct"),
+    "JOB_OPENINGS":          ("JTSJOL",     "monthly",   "Job Openings (Thousands)",                   "yoy_pct"),
+    "LAYOFFS_DISCHARGES":    ("JTSLDL",     "monthly",   "Layoffs & Discharges (Thousands)",           "yoy_pct"),
+    "QUITS_RATE":            ("JTSQUR",     "monthly",   "Quits Rate (%)",                             "level"),
+    "LABOR_FORCE_PARTICIPATION": ("CIVPART","monthly",   "Labor Force Participation Rate (%)",         "level"),
+    "ECI":                   ("ECIALLCIV",  "quarterly", "Employment Cost Index (Index)",              "yoy_pct"),
+    "REAL_DISPOSABLE_INCOME":("DSPIC96",    "monthly",   "Real Disposable Personal Income ($ Billions)","yoy_pct"),
+    "PERSONAL_SAVING_RATE":  ("PSAVERT",    "monthly",   "Personal Saving Rate (%)",                   "level"),
+    "POPULATION":            ("POPTHM",     "monthly",   "Population (Thousands)",                     "yoy_pct"),
 
     # Money supply
-    "M2_MONEY_SUPPLY":       ("M2SL",      "monthly", "M2 Money Supply ($ Billions)"),
+    "M2_MONEY_SUPPLY":       ("M2SL",       "monthly",   "M2 Money Supply ($ Billions)",               "yoy_pct"),
 
     # Treasury yields
-    "YIELD_2Y":              ("DGS2",      "daily",   "2-Year Treasury Yield (%)"),
-    "YIELD_5Y":              ("DGS5",      "daily",   "5-Year Treasury Yield (%)"),
-    "YIELD_10Y":             ("DGS10",     "daily",   "10-Year Treasury Yield (%)"),
-    "YIELD_20Y":             ("DGS20",     "daily",   "20-Year Treasury Yield (%)"),
-    "YIELD_30Y":             ("DGS30",     "daily",   "30-Year Treasury Yield (%)"),
+    "YIELD_2Y":              ("DGS2",       "daily",     "2-Year Treasury Yield (%)",                  "level"),
+    "YIELD_5Y":              ("DGS5",       "daily",     "5-Year Treasury Yield (%)",                  "level"),
+    "YIELD_10Y":             ("DGS10",      "daily",     "10-Year Treasury Yield (%)",                 "level"),
+    "YIELD_20Y":             ("DGS20",      "daily",     "20-Year Treasury Yield (%)",                 "level"),
+    "YIELD_30Y":             ("DGS30",      "daily",     "30-Year Treasury Yield (%)",                 "level"),
 
     # Yield curve spread
-    "SPREAD_10Y2Y":          ("T10Y2Y",    "daily",   "10Y-2Y Treasury Spread (pp)"),
+    "SPREAD_10Y2Y":          ("T10Y2Y",     "daily",     "10Y-2Y Treasury Spread (pp)",                "level"),
 }
 
-# Number of observations that make up one year, per frequency
-# used so the YoY % change is calculated over an actual 12-month span,
-# regardless of whether the series is monthly, weekly, or daily
-PERIODS_PER_YEAR = {"monthly": 12, "weekly": 52, "daily": 252}
+# Note: "Vacancy-to-unemployment ratio" has no direct FRED ticker.
+# It has to be computed after the fact as JOB_OPENINGS / UNEMPLOY_LEVEL, once both are saved.
 
-for series_id, (fred_code, frequency, name) in SERIES_MAP.items():
-    print(f"\n--- {series_id} ({name}) [{frequency}] --- (YoY % change)")
+# Number of observations that make up one year, per frequency
+# used so the year-over-year comparison spans an actual 12-month period,
+# regardless of whether the series is daily, weekly, monthly, or quarterly
+PERIODS_PER_YEAR = {"daily": 252, "weekly": 52, "monthly": 12, "quarterly": 4}
+
+for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
     data = fred.get_series(fred_code)
-    periods = PERIODS_PER_YEAR[frequency]  # pick the right lookback based on this series' frequency
-    yoy = data.pct_change(periods=periods) * 100
-    print(yoy.tail(10))
+    periods = PERIODS_PER_YEAR[frequency]
+
+    if transform == "yoy_pct":
+        # for index/count-type series: show year-over-year % change
+        result = data.pct_change(periods=periods) * 100
+        label = "YoY % change"
+    elif transform == "diff":
+        # for series already expressed as a %, e.g. yields/spreads: show year-over-year change in percentage points, not a % change of a %
+        result = data.diff(periods=periods)
+        label = "YoY change (pp)"
+    else:  # "level"
+        # for rates already expressed as a %, e.g. unemployment rate: show the raw value, no transform
+        result = data
+        label = "level"
+
+    print(f"\n--- {series_id} ({name}) [{frequency}] --- ({label})")
+    print(result.tail(10))
 
 def upsert_observation(conn, series_id, obs_date, value, vintage_date): # conn = database connection
     # calling .execute() on the connection to run a SQL command
@@ -92,7 +122,7 @@ def upsert_observation(conn, series_id, obs_date, value, vintage_date): # conn =
 def main():
     today = date.today()
     with engine.begin() as conn: # Opens a connection to the datbase
-        for series_id, (fred_code, frequency, name) in SERIES_MAP.items():
+        for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
             print(f"\n--- {series_id} ({name}) [{frequency}] ---")
             data = fred.get_series(fred_code)
 
