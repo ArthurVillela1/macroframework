@@ -43,9 +43,9 @@ SERIES_MAP = {
     "CLAIMS_CONTINUED":      ("CCSA",       "weekly",    "Continued Jobless Claims",                   "level"),
     "AVG_HOURLY_EARNINGS":   ("AHETPI",     "monthly",   "Average Hourly Earnings ($)",                "yoy_pct"),
     "UNRATE":                ("UNRATE",     "monthly",   "Unemployment Rate (%)",                      "level"),
-    "UNEMPLOY_LEVEL":        ("UNEMPLOY",   "monthly",   "Unemployment Level (Thousands)",             "yoy_pct"),
-    "JOB_OPENINGS":          ("JTSJOL",     "monthly",   "Job Openings (Thousands)",                   "yoy_pct"),
-    "LAYOFFS_DISCHARGES":    ("JTSLDL",     "monthly",   "Layoffs & Discharges (Thousands)",           "yoy_pct"),
+    "UNEMPLOY_LEVEL":        ("UNEMPLOY",   "monthly",   "Unemployment Level (Thousands)",             "level"),
+    "JOB_OPENINGS":          ("JTSJOL",     "monthly",   "Job Openings (Thousands)",                   "level"),
+    "LAYOFFS_DISCHARGES":    ("JTSLDL",     "monthly",   "Layoffs & Discharges (Thousands)",           "level"),
     "QUITS_RATE":            ("JTSQUR",     "monthly",   "Quits Rate (%)",                             "level"),
     "LABOR_FORCE_PARTICIPATION": ("CIVPART","monthly",   "Labor Force Participation Rate (%)",         "level"),
     "ECI":                   ("ECIALLCIV",  "quarterly", "Employment Cost Index (Index)",              "yoy_pct"),
@@ -131,7 +131,9 @@ def upsert_observation(conn, series_id, obs_date, value, vintage_date): # conn =
 # Fetching data from FRED and saving it to the database
 def main():
     today = date.today()
-    with engine.begin() as conn: # Opens a connection to the datbase
+
+    with engine.begin() as conn:
+        # Fetch and save the original FRED series
         for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
             print(f"\n--- {series_id} ({name}) [{frequency}] ---")
             data = fred.get_series(fred_code)
@@ -139,9 +141,52 @@ def main():
             for obs_date, value in data.items():
                 if pd.isna(value):
                     continue
-                upsert_observation(conn, series_id, obs_date.date(), float(value), today)
+
+                upsert_observation(
+                    conn,
+                    series_id,
+                    obs_date.date(),
+                    float(value),
+                    today
+                )
 
             print(f"Saved {len(data)} rows for {series_id}")
+
+        # Vacancy-to-unemployment ratio
+        job_openings = fred.get_series("JTSJOL")
+        unemployed = fred.get_series("UNEMPLOY")
+
+        vacancy_ratio = pd.concat(
+            [
+                job_openings.rename("job_openings"),
+                unemployed.rename("unemployed")
+            ],
+            axis=1,
+            join="inner"
+        ).dropna()
+
+        vacancy_ratio["ratio"] = (
+            vacancy_ratio["job_openings"]
+            / vacancy_ratio["unemployed"]
+        )
+
+        print("\n--- VACANCY RATIO ---")
+        print(vacancy_ratio["ratio"].tail(10))
+
+        # Save the calculated ratio
+        for obs_date, value in vacancy_ratio["ratio"].items():
+            upsert_observation(
+                conn,
+                "VACANCY_RATIO",
+                obs_date.date(),
+                float(value),
+                today
+            )
+
+        print(
+            f"Saved {len(vacancy_ratio)} rows "
+            "for VACANCY_RATIO"
+        )
 
 if __name__ == "__main__":
     main()
