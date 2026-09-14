@@ -124,8 +124,14 @@ SERIES_MAP = {
 
 # Number of observations that make up one year, per frequency
 # used so the year-over-year comparison spans an actual 12-month period,
-# regardless of whether the series is daily, weekly, monthly, or quarterly
-PERIODS_PER_YEAR = {"daily": 252, "weekly": 52, "monthly": 12, "quarterly": 4}
+# regardless of whether the series is daily, weekly, monthly, quarterly, or annual
+PERIODS_PER_YEAR = {
+    "daily": 252,
+    "weekly": 52,
+    "monthly": 12,
+    "quarterly": 4,
+    "annual": 1
+}
 
 for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
     data = get_fred_series_with_retry(fred_code)
@@ -178,6 +184,70 @@ def upsert_observation(conn, series_id, obs_date, value, vintage_date): # conn =
 # Fetching data from FRED and saving it to the database
 def main():
     today = date.today()
+    # Get the latest Federal Reserve balance sheet
+    H41_URL = (
+        "https://fred.stlouisfed.org/release/tables"
+        "?eid=1193943&rid=20"
+    )
+
+    balance_sheet = pd.read_html(H41_URL)[0]
+
+    # Remove the unused selection column returned by the HTML table
+    balance_sheet = balance_sheet.iloc[:, -5:]
+
+    balance_sheet.columns = [
+        "component",
+        "date",
+        "value",
+        "preceding_period",
+        "year_ago"
+    ]
+
+    balance_sheet = balance_sheet[
+        [
+            "component",
+            "date",
+            "value"
+        ]
+    ].copy()
+
+    balance_sheet["value"] = pd.to_numeric(
+        balance_sheet["value"]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .replace(".", pd.NA),
+        errors="coerce"
+    )
+
+    liabilities_start = balance_sheet.index[
+        balance_sheet["component"] == "Currency in circulation"
+    ][0]
+
+    balance_sheet["section"] = "Assets"
+
+    balance_sheet.loc[
+        balance_sheet.index >= liabilities_start,
+        "section"
+    ] = "Liabilities and reserve balances"
+
+    balance_sheet = balance_sheet[
+        [
+            "section",
+            "component",
+            "date",
+            "value"
+        ]
+    ]
+
+    print("\n--- LATEST FEDERAL RESERVE BALANCE SHEET ($ Millions) ---")
+    print(
+        balance_sheet.to_string(
+            index=False,
+            formatters={
+                "value": lambda value: f"{value:,.0f}"
+            }
+        )
+    )
 
     with engine.begin() as conn:
         # Fetch and save the original FRED series
