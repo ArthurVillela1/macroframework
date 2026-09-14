@@ -3,6 +3,7 @@ from fredapi import Fred
 from sqlalchemy import create_engine, text
 from datetime import date
 import os
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,6 +18,25 @@ CONN_STR = (
 )
 engine = create_engine(CONN_STR) # Used to open the connection to the SQL Server database
 fred = Fred(api_key=FRED_API_KEY) 
+
+
+def get_fred_series_with_retry(fred_code, max_retries=5):
+    for attempt in range(1, max_retries + 1):
+        try:
+            return fred.get_series(fred_code)
+
+        except Exception as error:
+            if attempt == max_retries:
+                raise
+
+            wait_seconds = 2 ** attempt
+
+            print(
+                f"FRED request failed for {fred_code}: {error}. "
+                f"Retrying in {wait_seconds} seconds..."
+            )
+
+            time.sleep(wait_seconds)
 
 
 # FRED series to fetch and their corresponding metadata
@@ -70,6 +90,15 @@ SERIES_MAP = {
     "TERM_PREMIUM_2Y":       ("THREEFYTP2",  "daily",    "2-Year Treasury Term Premium (%)",           "level"),
     "TERM_PREMIUM_5Y":       ("THREEFYTP5",  "daily",    "5-Year Treasury Term Premium (%)",           "level"),
     "TERM_PREMIUM_10Y":      ("THREEFYTP10", "daily",    "10-Year Treasury Term Premium (%)",          "level"),
+
+    # Federal debt
+    "DEBT_TO_GDP":           ("GFDEGDQ188S",  "quarterly", "Total Federal Debt (% of GDP)",              "level"),
+    "PUBLIC_DEBT_TO_GDP":    ("FYGFGDQ188S",  "quarterly", "Federal Debt Held by the Public (% of GDP)", "level"),
+
+    # Commodity prices
+    "WTI_PRICE":             ("DCOILWTICO",       "daily", "WTI Crude Oil Price ($ per Barrel)",         "level"),
+    "BRENT_PRICE":           ("DCOILBRENTEU",     "daily", "Brent Crude Oil Price ($ per Barrel)",       "level"),
+    "NATURAL_GAS_PRICE":     ("DHHNGSP",           "daily", "Henry Hub Natural Gas Price ($ per MMBtu)",  "level"),
 }
 
 # Note: "Vacancy-to-unemployment ratio" has no direct FRED ticker.
@@ -81,7 +110,7 @@ SERIES_MAP = {
 PERIODS_PER_YEAR = {"daily": 252, "weekly": 52, "monthly": 12, "quarterly": 4}
 
 for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
-    data = fred.get_series(fred_code)
+    data = get_fred_series_with_retry(fred_code)
     periods = PERIODS_PER_YEAR[frequency]
 
     if transform == "yoy_pct":
@@ -136,7 +165,7 @@ def main():
         # Fetch and save the original FRED series
         for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
             print(f"\n--- {series_id} ({name}) [{frequency}] ---")
-            data = fred.get_series(fred_code)
+            data = get_fred_series_with_retry(fred_code)
 
             for obs_date, value in data.items():
                 if pd.isna(value):
@@ -153,8 +182,8 @@ def main():
             print(f"Saved {len(data)} rows for {series_id}")
 
         # Vacancy-to-unemployment ratio
-        job_openings = fred.get_series("JTSJOL")
-        unemployed = fred.get_series("UNEMPLOY")
+        job_openings = get_fred_series_with_retry("JTSJOL")
+        unemployed = get_fred_series_with_retry("UNEMPLOY")
 
         vacancy_ratio = pd.concat(
             [
