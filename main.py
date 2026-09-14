@@ -82,7 +82,9 @@ SERIES_MAP = {
     "YIELD_10Y":             ("DGS10",      "daily",     "10-Year Treasury Yield (%)",                 "level"),
     "YIELD_20Y":             ("DGS20",      "daily",     "20-Year Treasury Yield (%)",                 "level"),
     "YIELD_30Y":             ("DGS30",      "daily",     "30-Year Treasury Yield (%)",                 "level"),
-
+    
+    # Federal Reserve balance sheet
+    "FED_ASSETS":            ("WALCL",      "weekly",    "Federal Reserve Total Assets ($ Billions)", "level"),
     # Yield curve spread
     "SPREAD_10Y2Y":          ("T10Y2Y",     "daily",     "10Y-2Y Treasury Spread (pp)",                "level"),
 
