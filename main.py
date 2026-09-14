@@ -95,6 +95,24 @@ SERIES_MAP = {
     "DEBT_TO_GDP":           ("GFDEGDQ188S",  "quarterly", "Total Federal Debt (% of GDP)",              "level"),
     "PUBLIC_DEBT_TO_GDP":    ("FYGFGDQ188S",  "quarterly", "Federal Debt Held by the Public (% of GDP)", "level"),
 
+    # Fiscal balance
+    "NOMINAL_DEFICIT_TO_GDP": ("FYFSGDA188S",     "annual",  "Federal Surplus or Deficit (% of GDP)",       "level"),
+
+    # Federal Reserve policy and money-market rates
+    "IORB":                   ("IORB",             "daily",   "Interest Rate on Reserve Balances (%)",        "level"),
+    "EFFR":                   ("EFFR",             "daily",   "Effective Federal Funds Rate (%)",             "level"),
+    "SOFR":                   ("SOFR",             "daily",   "Secured Overnight Financing Rate (%)",         "level"),
+    "ON_RRP_RATE":            ("RRPONTSYAWARD",   "daily",   "Overnight Reverse Repo Award Rate (%)",        "level"),
+
+    # Real interest rates and inflation breakevens
+    "REAL_RATE_5Y":           ("DFII5",            "daily",   "5-Year Treasury Real Rate (%)",                "level"),
+    "BREAKEVEN_5Y":           ("T5YIE",            "daily",   "5-Year Inflation Breakeven Rate (%)",          "level"),
+    "REAL_RATE_10Y":          ("DFII10",           "daily",   "10-Year Treasury Real Rate (%)",               "level"),
+    "BREAKEVEN_10Y":          ("T10YIE",           "daily",   "10-Year Inflation Breakeven Rate (%)",         "level"),
+
+    # Dollar
+    "DOLLAR_INDEX":           ("DTWEXBGS",         "daily",   "Nominal Broad U.S. Dollar Index",              "level"),
+
     # Commodity prices
     "WTI_PRICE":             ("DCOILWTICO",       "daily", "WTI Crude Oil Price ($ per Barrel)",         "level"),
     "BRENT_PRICE":           ("DCOILBRENTEU",     "daily", "Brent Crude Oil Price ($ per Barrel)",       "level"),
