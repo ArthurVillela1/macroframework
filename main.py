@@ -135,8 +135,8 @@ PERIODS_PER_YEAR = {
     "annual": 1
 }
 
-for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
-    data = get_fred_series_with_retry(fred_code)
+
+def transform_fred_series(data, frequency, transform):
     periods = PERIODS_PER_YEAR[frequency]
 
     if transform == "yoy_pct":
@@ -160,6 +160,60 @@ for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
         # show the raw value with no transformation
         result = data
         label = "level"
+
+    return result, label
+
+
+def build_last_12_months_dataframe():
+    frames = {}
+
+    for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
+        data = get_fred_series_with_retry(fred_code)
+        result, _ = transform_fred_series(data, frequency, transform)
+        frames[series_id] = result.rename(series_id)
+
+    # Add the derived vacancy-to-unemployment ratio to the combined panel.
+    job_openings = get_fred_series_with_retry("JTSJOL")
+    unemployed = get_fred_series_with_retry("UNEMPLOY")
+
+    vacancy_ratio = pd.concat(
+        [
+            job_openings.rename("job_openings"),
+            unemployed.rename("unemployed")
+        ],
+        axis=1,
+        join="inner"
+    ).dropna()
+
+    vacancy_ratio["ratio"] = (
+        vacancy_ratio["job_openings"] / vacancy_ratio["unemployed"]
+    )
+
+    frames["VACANCY_RATIO"] = vacancy_ratio["ratio"].rename("VACANCY_RATIO")
+
+    valid_frames = [frame for frame in frames.values() if not frame.empty]
+    if not valid_frames:
+        raise ValueError("No FRED series were loaded for the 12-month dataframe.")
+
+    latest_date = max(frame.index.max() for frame in valid_frames)
+    start_date = latest_date - pd.DateOffset(months=12)
+
+    combined = pd.concat(
+        [
+            frame.loc[frame.index >= start_date]
+            for frame in valid_frames
+        ],
+        axis=1,
+        join="outer"
+    ).sort_index()
+
+    combined.index.name = "date"
+    return combined
+
+
+for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
+    data = get_fred_series_with_retry(fred_code)
+    result, label = transform_fred_series(data, frequency, transform)
 
     print(f"\n--- {series_id} ({name}) [{frequency}] --- ({label})")
     print(result.tail(10))
@@ -306,6 +360,7 @@ def main():
             f"Saved {len(vacancy_ratio)} rows "
             "for VACANCY_RATIO"
         )
+
 
 if __name__ == "__main__":
     main()
