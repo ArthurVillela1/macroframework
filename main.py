@@ -6,32 +6,34 @@ import os
 import time
 from dotenv import load_dotenv
 
-load_dotenv()
-FRED_API_KEY = os.getenv("FRED_API_KEY")
+load_dotenv() # reads the .env file and loads its values into environment variables
+FRED_API_KEY = os.getenv("FRED_API_KEY") # gets the FRED_API_KEY value from those environment variables
 
 
 # SQL server
 CONN_STR = (
-    "mssql+pyodbc://@ARTHUR\\SQLEXPRESS/macro"
-    "?driver=ODBC+Driver+17+for+SQL+Server"
-    "&trusted_connection=yes"
+    "mssql+pyodbc://"                       # database type (Microsoft SQL Server) and the library used to talk to it (pyodbc)
+    "@ARTHUR\\SQLEXPRESS"                   # the server: your computer (ARTHUR) and the SQL Server instance name (SQLEXPRESS)
+    "/macro"                                # the database to use inside that server
+    "?driver=ODBC+Driver+17+for+SQL+Server" # the driver installed on Windows that handles the connection
+    "&trusted_connection=yes"               # log in with your Windows account instead of a username/password
 )
 engine = create_engine(CONN_STR) # Used to open the connection to the SQL Server database
 fred = Fred(api_key=FRED_API_KEY) 
 
-
+# Function to fetch a FRED series with retry logic in case of failure
 def get_fred_series_with_retry(fred_code, max_retries=5):
     for attempt in range(1, max_retries + 1):
         try:
-            return fred.get_series(fred_code)
+            return fred.get_series(fred_code)  # downloads the series; if it works, returns it and exits the function
 
-        except Exception as error:
-            if attempt == max_retries:
-                raise
+        except Exception as error:             # if the download fails, catches the error instead of crashing
+            if attempt == max_retries:         # if this was the last allowed attempt...
+                raise                          # ...gives up and lets the error crash the script
 
-            wait_seconds = 2 ** attempt
+            wait_seconds = 2 ** attempt        # waiting time doubles each attempt: 2, 4, 8, 16 seconds
 
-            print(
+            print(                             # tells you what failed and how long it will wait
                 f"FRED request failed for {fred_code}: {error}. "
                 f"Retrying in {wait_seconds} seconds..."
             )
@@ -306,24 +308,27 @@ def main():
     )
 
     with engine.begin() as conn:
-        # Fetch and save the original FRED series
+        # Suffix used for the transformed copy of each series
+        TRANSFORM_SUFFIX = {"yoy_pct": "YOY", "change": "CHG", "diff": "YOY_PP"}
+
         for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
             print(f"\n--- {series_id} ({name}) [{frequency}] ---")
-            data = get_fred_series_with_retry(fred_code)
+            data = get_fred_series_with_retry(fred_code).dropna()
 
+            # 1) Raw level, as before
             for obs_date, value in data.items():
-                if pd.isna(value):
-                    continue
-
-                upsert_observation(
-                    conn,
-                    series_id,
-                    obs_date.date(),
-                    float(value),
-                    today
-                )
-
+                upsert_observation(conn, series_id, obs_date.date(), float(value), today)
             print(f"Saved {len(data)} rows for {series_id}")
+
+            # 2) Transformed version, saved under its own series_id
+            if transform != "level":
+                transformed, label = transform_fred_series(data, frequency, transform)
+                transformed = transformed.dropna()
+                transformed_id = f"{series_id}_{TRANSFORM_SUFFIX[transform]}"
+
+                for obs_date, value in transformed.items():
+                    upsert_observation(conn, transformed_id, obs_date.date(), float(value), today)
+                print(f"Saved {len(transformed)} rows for {transformed_id} ({label})")
 
         # Vacancy-to-unemployment ratio
         job_openings = get_fred_series_with_retry("JTSJOL")
