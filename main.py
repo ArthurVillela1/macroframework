@@ -38,7 +38,7 @@ def get_fred_series_with_retry(fred_code, max_retries=5):
                 f"Retrying in {wait_seconds} seconds..."
             )
 
-            time.sleep(wait_seconds)
+            time.sleep(wait_seconds) # pauses the script for the specified number of seconds before trying again
 
 
 # FRED series to fetch and their corresponding metadata
@@ -123,7 +123,7 @@ SERIES_MAP = {
     "NATURAL_GAS_PRICE":     ("DHHNGSP",           "daily", "Henry Hub Natural Gas Price ($ per MMBtu)",  "level"),
 }
 
-# Note: "Vacancy-to-unemployment ratio" has no direct FRED ticker.
+# Vacancy-to-unemployment ratio has no direct FRED ticker.
 # It has to be computed after the fact as JOB_OPENINGS / UNEMPLOY_LEVEL, once both are saved.
 
 # Number of observations that make up one year, per frequency
@@ -142,13 +142,10 @@ def transform_fred_series(data, frequency, transform):
     periods = PERIODS_PER_YEAR[frequency]
 
     if transform == "yoy_pct":
-        # for index/count-type series: show year-over-year % change
         result = data.pct_change(periods=periods) * 100
         label = "YoY % change"
 
     elif transform == "change":
-        # show the change from the previous observation
-        # for monthly payrolls, this is the monthly change in thousands
         result = data.diff()
         label = "change from previous observation"
 
@@ -159,7 +156,6 @@ def transform_fred_series(data, frequency, transform):
         label = "YoY change (pp)"
 
     else:  # "level"
-        # show the raw value with no transformation
         result = data
         label = "level"
 
@@ -167,12 +163,12 @@ def transform_fred_series(data, frequency, transform):
 
 
 def build_last_12_months_dataframe():
-    frames = {}
+    frames = {}                                                                      # empty dictionary to collect each processed series, keyed by its ID
 
-    for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():
-        data = get_fred_series_with_retry(fred_code)
-        result, _ = transform_fred_series(data, frequency, transform)
-        frames[series_id] = result.rename(series_id)
+    for series_id, (fred_code, frequency, name, transform) in SERIES_MAP.items():    # loops over every series defined in SERIES_MAP
+        data = get_fred_series_with_retry(fred_code)                                 # downloads the raw series from FRED (with retries if it fails)
+        result, _ = transform_fred_series(data, frequency, transform)                # applies the transformation (e.g. % change); "_" discards label since it's not needed here
+        frames[series_id] = result.rename(series_id)                                 # names the series after its ID (becomes the column name later) and stores it
 
     # Add the derived vacancy-to-unemployment ratio to the combined panel.
     job_openings = get_fred_series_with_retry("JTSJOL")
