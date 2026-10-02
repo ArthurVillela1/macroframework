@@ -2,8 +2,12 @@ import pandas as pd
 from fredapi import Fred
 from sqlalchemy import create_engine, text
 from datetime import date
+from io import BytesIO
 import os
 import time
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+from zipfile import ZipFile
 from dotenv import load_dotenv
 
 load_dotenv() # reads the .env file and loads its values into environment variables
@@ -303,6 +307,108 @@ def main():
         )
     )
 
+    JGB_YIELD_URL = (
+        "https://www.mof.go.jp/english/policy/jgbs/reference/"
+        "interest_rate/historical/jgbcme_all.csv"
+    )
+    jgb_yields = pd.read_csv(JGB_YIELD_URL, skiprows=1, na_values=["-"])
+    jgb_yields["Date"] = pd.to_datetime(
+        jgb_yields["Date"],
+        format="%Y/%m/%d"
+    )
+    jgb_yields["10Y"] = pd.to_numeric(jgb_yields["10Y"], errors="coerce")
+    jgb_10y = (
+        jgb_yields.set_index("Date")["10Y"]
+        .dropna()
+        .rename("JGB_10Y")
+    )
+
+    print("\n--- JGB 10-Year Yield (%) ---")
+    print(jgb_10y.tail())
+
+    BOE_YIELD_CURVE_URL = (
+        "https://www.bankofengland.co.uk/-/media/boe/files/statistics/"
+        "yield-curves/latest-yield-curve-data.zip"
+    )
+    boe_request = Request(
+        BOE_YIELD_CURVE_URL,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/130.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://www.bankofengland.co.uk/statistics/yield-curves",
+            "Accept": "application/zip,application/octet-stream,*/*",
+        },
+    )
+    with urlopen(boe_request, timeout=30) as response:
+        boe_zip_data = response.read()
+
+    with ZipFile(BytesIO(boe_zip_data)) as boe_zip:
+        with boe_zip.open("GLC Nominal daily data current month.xlsx") as workbook:
+            boe_curve = pd.read_excel(
+                workbook,
+                sheet_name="4. spot curve",
+                header=None
+            )
+
+    maturity_row_index = boe_curve.index[
+        boe_curve.iloc[:, 0].eq("years:")
+    ][0]
+    maturity_row = pd.to_numeric(
+        boe_curve.iloc[maturity_row_index],
+        errors="coerce"
+    )
+    ten_year_column = maturity_row.index[maturity_row.eq(10)][0]
+    gilt_data = boe_curve.iloc[maturity_row_index + 1:, [0, ten_year_column]]
+    gilt_data.columns = ["date", "value"]
+    gilt_data["date"] = pd.to_datetime(gilt_data["date"], errors="coerce")
+    gilt_data["value"] = pd.to_numeric(gilt_data["value"], errors="coerce")
+    gilt_10y = (
+        gilt_data.dropna()
+        .set_index("date")["value"]
+        .rename("GILT_10Y")
+    )
+
+    BUND_YIELD_URL = (
+        "https://api.statistiken.bundesbank.de/rest/download/"
+        "BBK01/WT1010?format=csv&lang=en"
+    )
+    try:
+        bund_yields = pd.read_csv(
+            BUND_YIELD_URL,
+            skiprows=8,
+            header=None,
+            names=["date", "value"]
+        )
+    except HTTPError as error:
+        bund_10y = None
+        print(
+            "WARNING: Could not fetch BUND_10Y from the Bundesbank "
+            f"(HTTP {error.code}); this series will be skipped."
+        )
+    else:
+        bund_yields["date"] = pd.to_datetime(
+            bund_yields["date"],
+            errors="coerce"
+        )
+        bund_yields["value"] = pd.to_numeric(
+            bund_yields["value"],
+            errors="coerce"
+        )
+        bund_10y = (
+            bund_yields.dropna()
+            .set_index("date")["value"]
+            .rename("BUND_10Y")
+        )
+
+    print("\n--- Gilt 10-Year Yield (%) ---")
+    print(gilt_10y.tail())
+    if bund_10y is not None:
+        print("\n--- Bund 10-Year Yield (%) ---")
+        print(bund_10y.tail())
+
     with engine.begin() as conn:
         # Suffix used for the transformed copy of each series
         TRANSFORM_SUFFIX = {"yoy_pct": "YOY", "change": "CHG", "diff": "YOY_PP"}
@@ -325,6 +431,31 @@ def main():
                 for obs_date, value in transformed.items():
                     upsert_observation(conn, transformed_id, obs_date.date(), float(value), today)
                 print(f"Saved {len(transformed)} rows for {transformed_id} ({label})")
+
+        for obs_date, value in jgb_10y.items():
+            upsert_observation(
+                conn,
+                "JGB_10Y",
+                obs_date.date(),
+                float(value),
+                today
+            )
+        print(f"Saved {len(jgb_10y)} rows for JGB_10Y")
+
+        international_yields = [("GILT_10Y", gilt_10y)]
+        if bund_10y is not None:
+            international_yields.append(("BUND_10Y", bund_10y))
+
+        for series_id, data in international_yields:
+            for obs_date, value in data.items():
+                upsert_observation(
+                    conn,
+                    series_id,
+                    obs_date.date(),
+                    float(value),
+                    today
+                )
+            print(f"Saved {len(data)} rows for {series_id}")
 
         # Vacancy-to-unemployment ratio
         job_openings = get_fred_series_with_retry("JTSJOL")
